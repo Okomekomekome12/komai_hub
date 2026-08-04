@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head><title>Player</title></head>
+<body>
+<video id="video" controls style="width:100%"></video>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<script>
+const m3u8Url = "https://ev-h.phncdn.com/hls/c6251/videos/202608/02/57574115/1080P_4000K_57574115.mp4/master.m3u8?validfrom=1785740759&validto=1785747959&ipa=1&hdl=-1&hash=M6kZUAYJbBIDgjR30s5BlJazBtA%3D";
+const proxied = "/proxy?url=" + encodeURIComponent(m3u8Url);
+
+const video = document.getElementById("video");
+
+// 既存のインスタンスがあれば破棄してから作り直す
+if (window._hlsInstance) {
+    window._hlsInstance.destroy();
+}
+
+if (Hls.isSupported()) {
+    const hls = new Hls();
+    window._hlsInstance = hls;
+
+    hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error("HLS error:", data.details, data.fatal);
+        if (data.fatal) {
+            switch (data.type) {
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                    hls.recoverMediaError();
+                    break;
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                    hls.startLoad();
+                    break;
+                default:
+                    hls.destroy();
+                    break;
+            }
+        }
+    });
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play();
+    });
+
+    hls.loadSource(proxied);
+    hls.attachMedia(video);
+} else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    video.src = proxied;
+}
+</script>
+</body>
+</html>

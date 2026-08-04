@@ -34,5 +34,5 @@ komai_hub
 出来たら関連動画も
 
 
-こっちはpypiで見つけたp〇rnhub-apiを使う
+こっちはpypiで見つけたphub-apiを使う
 使えるかは試してから（
