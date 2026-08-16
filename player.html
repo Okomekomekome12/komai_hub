@@ -1,51 +1,216 @@
 <!DOCTYPE html>
-<html>
-<head><title>Player</title></head>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>HLS Player</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: #000;
+            object-fit: contain;
+        }
+
+        #error {
+            position: absolute;
+            left: 20px;
+            right: 20px;
+            top: 20px;
+
+            padding: 15px;
+
+            color: white;
+            background: rgba(150, 0, 0, 0.85);
+
+            border-radius: 6px;
+
+            font-family: sans-serif;
+            white-space: pre-wrap;
+
+            display: none;
+        }
+    </style>
+</head>
+
 <body>
-<video id="video" controls style="width:100%"></video>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<video
+    id="video"
+    controls
+    playsinline
+    autoplay>
+</video>
+
+<div id="error"></div>
+
 <script>
-const m3u8Url = "https://ev-h.phncdn.com/hls/c6251/videos/202608/02/57574115/1080P_4000K_57574115.mp4/master.m3u8?validfrom=1785740759&validto=1785747959&ipa=1&hdl=-1&hash=M6kZUAYJbBIDgjR30s5BlJazBtA%3D";
-const proxied = "/proxy?url=" + encodeURIComponent(m3u8Url);
-
 const video = document.getElementById("video");
+const errorElement = document.getElementById("error");
 
-// 既存のインスタンスがあれば破棄してから作り直す
-if (window._hlsInstance) {
-    window._hlsInstance.destroy();
+function showError(message) {
+    console.error(message);
+
+    errorElement.textContent = message;
+    errorElement.style.display = "block";
 }
 
-if (Hls.isSupported()) {
-    const hls = new Hls();
-    window._hlsInstance = hls;
+// URLパラメータからM3U8を取得
+const params = new URLSearchParams(
+    window.location.search
+);
 
-    hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error("HLS error:", data.details, data.fatal);
-        if (data.fatal) {
-            switch (data.type) {
-                case Hls.ErrorTypes.MEDIA_ERROR:
-                    hls.recoverMediaError();
-                    break;
-                case Hls.ErrorTypes.NETWORK_ERROR:
-                    hls.startLoad();
-                    break;
-                default:
-                    hls.destroy();
-                    break;
+const m3u8Url = params.get("m3u8");
+
+if (!m3u8Url) {
+
+    showError("M3U8 URLが指定されていません。");
+
+} else {
+
+    console.log("M3U8 URL:", m3u8Url);
+
+    /*
+     * Chrome / Edge / Firefoxなど
+     * HLS.jsが利用可能な場合
+     */
+    if (Hls.isSupported()) {
+
+        const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: false
+        });
+
+        hls.loadSource(m3u8Url);
+
+        hls.attachMedia(video);
+
+        hls.on(
+            Hls.Events.MANIFEST_PARSED,
+            function () {
+
+                console.log("M3U8読み込み完了");
+
+                video.play().catch(error => {
+                    console.log(
+                        "自動再生できませんでした:",
+                        error
+                    );
+                });
             }
-        }
-    });
+        );
 
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.play();
-    });
+        hls.on(
+            Hls.Events.ERROR,
+            function (event, data) {
 
-    hls.loadSource(proxied);
-    hls.attachMedia(video);
-} else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-    video.src = proxied;
+                console.error(
+                    "HLS ERROR:",
+                    data
+                );
+
+                /*
+                 * 致命的エラーの場合
+                 */
+                if (data.fatal) {
+
+                    switch (data.type) {
+
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+
+                            console.log(
+                                "ネットワークエラー"
+                            );
+
+                            // 再接続
+                            hls.startLoad();
+                            break;
+
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+
+                            console.log(
+                                "メディアエラー"
+                            );
+
+                            // メディア復旧
+                            hls.recoverMediaError();
+                            break;
+
+                        default:
+
+                            hls.destroy();
+
+                            showError(
+                                "HLS再生中に致命的なエラーが発生しました。"
+                            );
+
+                            break;
+                    }
+                }
+            }
+        );
+
+    /*
+     * Safariなど、ブラウザ自体がHLSに対応している場合
+     */
+    } else if (
+        video.canPlayType(
+            "application/vnd.apple.mpegurl"
+        )
+    ) {
+
+        video.src = m3u8Url;
+
+        video.addEventListener(
+            "loadedmetadata",
+            function () {
+
+                console.log(
+                    "ネイティブHLS読み込み完了"
+                );
+
+                video.play().catch(error => {
+                    console.log(
+                        "自動再生できませんでした:",
+                        error
+                    );
+                });
+            }
+        );
+
+        video.addEventListener(
+            "error",
+            function () {
+
+                showError(
+                    "動画の読み込みに失敗しました。"
+                );
+            }
+        );
+
+    } else {
+
+        showError(
+            "このブラウザはHLS再生に対応していません。"
+        );
+    }
 }
 </script>
+
 </body>
 </html>

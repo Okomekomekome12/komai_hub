@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Stream Player</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #12121a;
+      --surface2:  #1c1c28;
+      --border:    #2a2a3a;
+      --accent:    #7c6aff;
+      --accent2:   #ff6a9b;
+      --text:      #e8e8f0;
+      --muted:     #6b6b85;
+      --radius:    12px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 36px;
+    }
+
+    .logo {
+      width: 42px; height: 42px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: grid; place-items: center;
+      font-size: 20px;
+    }
+
+    header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ── Input card ── */
+    .input-card {
+      width: 100%;
+      max-width: 900px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 28px;
+    }
+
+    .input-card label {
+      display: block;
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-row input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-size: .95rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .input-row input:focus { border-color: var(--accent); }
+    .input-row input::placeholder { color: var(--muted); }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: .9rem;
+      font-weight: 600;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn:hover  { opacity: .88; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+    }
+
+    /* ── Player card ── */
+    .player-card {
+      width: 100%;
+      max-width: 900px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: none;
+    }
+
+    .player-card.visible { display: block; }
+
+    /* aspect-ratio wrapper */
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+    }
+
+    video {
+      width: 100%; height: 100%;
+      display: block;
+    }
+
+    /* spinner overlay */
+    .spinner-overlay {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      background: rgba(0,0,0,.6);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .spinner-overlay.active { opacity: 1; }
+
+    .spinner {
+      width: 48px; height: 48px;
+      border: 3px solid rgba(255,255,255,.15);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* player meta row */
+    .player-meta {
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border);
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .video-title {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .quality-wrap { display: flex; align-items: center; gap: 8px; }
+
+    .quality-wrap select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 6px 10px;
+      font-size: .82rem;
+      cursor: pointer;
+      outline: none;
+    }
+
+    /* ── Status bar ── */
+    .status {
+      width: 100%;
+      max-width: 900px;
+      margin-top: 16px;
+      font-size: .82rem;
+      color: var(--muted);
+      min-height: 18px;
+      transition: color .3s;
+    }
+    .status.error { color: var(--accent2); }
+    .status.ok    { color: #5af0a0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">▶</div>
+  <h1>Stream Player</h1>
+</header>
+
+<!-- Input -->
+<div class="input-card">
+  <label>動画URL</label>
+  <div class="input-row">
+    <input
+      id="urlInput"
+      type="text"
+      placeholder="https://jp.pornhub.com/view_video.php?viewkey=..."
+    />
+    <button class="btn btn-primary" onclick="loadVideo()">再生</button>
+  </div>
+</div>
+
+<!-- Player -->
+<div class="player-card" id="playerCard">
+  <div class="video-wrap">
+    <video id="video" controls playsinline></video>
+    <div class="spinner-overlay" id="spinnerOverlay">
+      <div class="spinner"></div>
+    </div>
+  </div>
+  <div class="player-meta">
+    <span class="video-title" id="videoTitle">—</span>
+    <div class="quality-wrap">
+      <span style="font-size:.78rem;color:var(--muted)">品質</span>
+      <select id="qualitySelect" onchange="switchQuality(this.value)">
+        <option value="-1">自動</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Status -->
+<div class="status" id="status"></div>
+
+<script>
+  let hls = null;
+
+  function setStatus(msg, type = '') {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + type;
+  }
+
+  function showSpinner(on) {
+    document.getElementById('spinnerOverlay').classList.toggle('active', on);
+  }
+
+  async function loadVideo() {
+    const raw = document.getElementById('urlInput').value.trim();
+    if (!raw) { setStatus('URLを入力してください', 'error'); return; }
+
+    setStatus('取得中…');
+    showSpinner(true);
+
+    // destroy previous hls instance
+    if (hls) { hls.destroy(); hls = null; }
+
+    const video = document.getElementById('video');
+
+    try {
+      const encoded = encodeURIComponent(raw);
+      const res = await fetch(`/api/videos/${encoded}`);
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+
+      const m3u8Url = (await res.text()).trim();
+      if (!m3u8Url) throw new Error('空のレスポンス');
+
+      // Extract viewkey for title placeholder
+      const vk = raw.match(/viewkey=([^&]+)/)?.[1] ?? raw;
+      document.getElementById('videoTitle').textContent = vk;
+
+      document.getElementById('playerCard').classList.add('visible');
+      initHLS(video, m3u8Url);
+
+    } catch (e) {
+      showSpinner(false);
+      setStatus('エラー: ' + e.message, 'error');
+    }
+  }
+
+  function initHLS(video, src) {
+    const qualitySelect = document.getElementById('qualitySelect');
+    qualitySelect.innerHTML = '<option value="-1">自動</option>';
+
+    if (Hls.isSupported()) {
+      hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 90,
+      });
+
+      hls.loadSource(src);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        showSpinner(false);
+        setStatus('ストリーム読み込み完了 ✓', 'ok');
+
+        // populate quality levels
+        data.levels.forEach((lv, i) => {
+          const opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = lv.height ? `${lv.height}p` : `Level ${i}`;
+          qualitySelect.appendChild(opt);
+        });
+
+        video.play().catch(() => {});
+      });
+
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          showSpinner(false);
+          setStatus('再生エラー: ' + data.type, 'error');
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              hls.startLoad(); break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              hls.recoverMediaError(); break;
+            default:
+              hls.destroy(); break;
+          }
+        }
+      });
+
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari native HLS
+      video.src = src;
+      video.addEventListener('loadedmetadata', () => {
+        showSpinner(false);
+        setStatus('ストリーム読み込み完了 ✓', 'ok');
+        video.play().catch(() => {});
+      });
+    } else {
+      showSpinner(false);
+      setStatus('このブラウザはHLSをサポートしていません', 'error');
+    }
+
+    video.addEventListener('waiting', () => showSpinner(true));
+    video.addEventListener('playing', () => showSpinner(false));
+    video.addEventListener('canplay', () => showSpinner(false));
+  }
+
+  function switchQuality(level) {
+    if (!hls) return;
+    hls.currentLevel = parseInt(level, 10);
+    setStatus(level === '-1' ? '自動品質に切り替え' : `品質を変更しました`, 'ok');
+  }
+
+  // Enter key support
+  document.getElementById('urlInput')
+    .addEventListener('keydown', e => { if (e.key === 'Enter') loadVideo(); });
+</script>
+</body>
+</html>
