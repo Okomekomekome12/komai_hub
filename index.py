@@ -2,6 +2,7 @@ import asyncio
 from pornhub_api import Client, DownloadConfigHLS
 from flask import Flask , send_from_directory 
 from urllib.parse import unquote
+import os
 
 app = Flask(__name__)
 
@@ -28,5 +29,6 @@ async def main(video_id):
     print(top_link)
     return f"{top_link}"
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
     asyncio.run(main("https://jp.pornhub.com/view_video.php?viewkey=68f9c080f17c9"))
