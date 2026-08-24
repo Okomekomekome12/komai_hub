@@ -1,0 +1,20 @@
+import asyncio
+from pornhub_api import Client, DownloadConfigHLS
+
+async def main():
+    # Initialize a Client object
+    client = Client()
+    
+    # Fetch a video
+    video_object = await client.get_video("https://pornhub.com/view_video.php?viewkey=68f9c080f17c9")
+    await video_object.load_fields("m3u8_base_url")
+    # Information from Video objects
+    print(video_object.title)
+    print(video_object.m3u8_base_url)
+
+    # Download the video
+    #config = DownloadConfigHLS(quality="best", path="./") # More options in the documentation
+    #await video_object.download(config)
+
+if __name__ == "__main__":
+    asyncio.run(main())
