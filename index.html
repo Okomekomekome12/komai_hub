@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <title>komai_hub</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -272,6 +273,8 @@
 </div>
 
 <script>
+  let hls = null;
+
   function setChip(text, type = 'loading') {
     const chip = document.getElementById('chip');
     const dot  = chip.querySelector('.dot');
@@ -301,19 +304,17 @@
     btn.disabled = true;
 
     document.getElementById('progressWrap').classList.add('visible');
-    setBar(true, 0, 'サーバーに接続中...');
-    setChip('ダウンロード中...', 'loading');
+    setBar(true, 0, 'ダウンロード中...');
+    setChip('取得中...', 'loading');
 
     try {
       const res = await fetch(`/api/videos?url=${encodeURIComponent(url)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const title = (await res.text()).trim();
-
       setBar(false, 100, '完了');
-      setChip(`保存完了 → ${title}.mp4`, 'ok');
+      setChip('ダウンロード完了', 'ok');
 
-      // プレイヤーにセット
       loadPlayer(title);
 
     } catch (e) {
@@ -321,13 +322,10 @@
       setChip(e.message, 'error');
     } finally {
       btn.disabled = false;
-      setTimeout(() => {
-        document.getElementById('progressWrap').classList.remove('visible');
-      }, 4000);
     }
   }
 
-  function loadPlayer(title) {
+ function loadPlayer(title) {
     const vid     = document.getElementById('player');
     const spinner = document.getElementById('videoSpinner');
     const card    = document.getElementById('playerCard');
@@ -336,20 +334,16 @@
     spinner.classList.add('on');
     card.classList.add('visible');
 
-    vid.src = `/api/video?f=${encodeURIComponent(title)}.mp4`;
+    vid.src = `/api/video/${encodeURIComponent(title)}.mp4`;
     vid.load();
 
-    vid.addEventListener('canplay', () => {
-      spinner.classList.remove('on');
-      vid.play().catch(() => {});
-    }, { once: true });
-
-    vid.addEventListener('waiting', () => spinner.classList.add('on'));
-    vid.addEventListener('playing', () => spinner.classList.remove('on'));
+    vid.oncanplay  = () => { spinner.classList.remove('on'); vid.play().catch(() => {}); };
+    vid.onwaiting  = () => spinner.classList.add('on');
+    vid.onplaying  = () => spinner.classList.remove('on');
+    vid.onerror    = () => { spinner.classList.remove('on'); alert('再生エラー: ' + vid.error?.message); };
 
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
+}
   document.getElementById('urlInput')
     .addEventListener('keydown', e => { if (e.key === 'Enter') startDownload(); });
 </script>
