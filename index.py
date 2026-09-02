@@ -1,115 +1,77 @@
-from pornhub_api import Client, DownloadConfigHLS
-from flask import Flask, send_from_directory, request
-import asyncio
-import os
-import re
-import subprocess
-import time
+from pornhub_api import Client
+from flask import Flask, send_from_directory, request, Response
+import asyncio, os, re, requests
 
-BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
-VIDEO_DIR = os.path.join(BASE_DIR, "Videos")
-
-app = Flask(__name__)
+app    = Flask(__name__)
 client = Client()
-loop = asyncio.new_event_loop()
+loop   = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
-try:
-    def safe_filename(title):
-        return re.sub(r"""[\\/:*?"<>|']""", "_", title)
 
-    @app.route("/")
-    def index():
-        return send_from_directory(".", "index.html")
+@app.route("/")
+def index():
+    return send_from_directory(".", "index.html")
 
-    """async def video_search(query):
-        async for result in client.search_videos(
-            query=query,
-            sort_by="mr",        
-            duration_min="10",   
-            pages=2):
-            if result.data:
-                video = result.data
-                print(video.title)
-                print(video.key)"""
-            
+async def get_m3u8(video_id):
+    video_object = await client.get_video(video_id)
+    await video_object.load_fields("m3u8_base_url")
+    lines = video_object.m3u8_base_url.strip().splitlines()
+    return lines[2]
 
-    """@app.route("/api/search")
-    def search():
-        loop.run_until_complete(search("keyword"))
-        return None"""
+@app.route("/api/videos")
+def start():
+    video_id = request.args.get("url", "")
+    if not video_id:
+        return "missing url", 400
+    try:
+        m3u8_url = loop.run_until_complete(get_m3u8(video_id))
+        return m3u8_url
+    except Exception as e:
+        return str(e), 500
+@app.route("/proxy")
+def proxy():
+    video_url = request.args.get("video_url", "")
+    if not video_url:
+        return "missing video_url", 400
 
-    @app.route("/api/video/<path:filename>")
-    def serve_video(filename):
-        return send_from_directory(VIDEO_DIR, filename, conditional=True)
+    m3u8_url = loop.run_until_complete(get_m3u8(video_url))
+    return rewrite_m3u8(m3u8_url)
 
-    """
-    async def DL_videos(video_id):
-        video_object = await client.get_video(video_id)
-        title = safe_filename(video_object.title)
+@app.route("/ts")
+def ts():
+    url = request.args.get("url", "")
+    if not url:
+        return "missing url", 400
 
-        tmp   = os.path.join(VIDEO_DIR, "_tmp.mp4")
-        final = os.path.join(VIDEO_DIR, f"{title}.mp4")
+    headers = {
+        "Referer":    "https://www.pornhub.com/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        "Origin":     "https://www.pornhub.com",
+    }
 
-        for f in [tmp, final]:
-            if os.path.exists(f): os.remove(f)
+    r = requests.get(url, headers=headers, stream=True, timeout=10)
+    content_type = r.headers.get("Content-Type", "")
+    if "mpegurl" in content_type or url.split("?")[0].endswith(".m3u8"):
+        return rewrite_m3u8(url)
 
-        os.makedirs(VIDEO_DIR, exist_ok=True)
-        config = DownloadConfigHLS(quality="360p", path=VIDEO_DIR)
-        await video_object.download(config)
+    return Response(r.iter_content(chunk_size=1024*64), content_type="video/MP2T")
 
-        raw = max(
-            [os.path.join(VIDEO_DIR, f) for f in os.listdir(VIDEO_DIR) if f.endswith(".mp4")],
-            key=os.path.getctime
-        )
+def rewrite_m3u8(m3u8_url):
+    headers = {
+        "Referer":    "https://www.pornhub.com/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        "Origin":     "https://www.pornhub.com",
+    }
+    r = requests.get(m3u8_url, headers=headers, timeout=10)
+    base = m3u8_url.rsplit("/", 1)[0]
 
-        subprocess.run(["ffmpeg", "-i", raw, "-c", "copy", "-movflags", "+faststart", "-y", tmp], check=True)
+    lines = []
+    for line in r.text.splitlines():
+        if line and not line.startswith("#"):
+            ts_url = line if line.startswith("http") else f"{base}/{line}"
+            line = f"/ts?url={requests.utils.quote(ts_url, safe='')}"
+        lines.append(line)
 
-        # Windowsのファイルロック対策
-        time.sleep(0.5)
-        try:
-            os.remove(raw)
-        except PermissionError:
-            pass
-
-        os.replace(tmp, final)
-        return title"""
-
-
-    async def DL_videos(video_id):
-        video_object = await client.get_video(video_id)
-        title = safe_filename(video_object.title)
-        tmp   = os.path.join(VIDEO_DIR, "_tmp.mp4")
-        final = os.path.join(VIDEO_DIR, f"{title}.mp4")
-
-        for f in [tmp, final]:
-            if os.path.exists(f): os.remove(f)
-
-        os.makedirs(VIDEO_DIR, exist_ok=True)
-        config = DownloadConfigHLS(quality="360p", path=VIDEO_DIR)
-        await video_object.download(config)
-
-        raw = max(
-            [os.path.join(VIDEO_DIR, f) for f in os.listdir(VIDEO_DIR) if f.endswith(".mp4")],
-            key=os.path.getctime
-        )
-
-        subprocess.run(["ffmpeg", "-i", raw, "-c", "copy", "-movflags", "+faststart", "-y", tmp], check=True)
-        os.remove(raw)
-        os.replace(tmp, final)
-        return title
-
-    @app.route("/api/videos")
-    def main():
-        video_id = request.args.get("url", "")
-        if not video_id:
-            return "missing url", 400
-        try:
-            video_title = loop.run_until_complete(DL_videos(video_id))
-            return video_title
-        except Exception as e:
-            return str(e), 500
-except Exception as e:
-    print(e)
+    return Response("\n".join(lines), content_type="application/vnd.apple.mpegurl")
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
