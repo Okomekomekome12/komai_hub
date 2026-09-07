@@ -253,31 +253,30 @@
   }
 
   async function startDownload() {
-    const url = document.getElementById('urlInput').value.trim();
-    if (!url) return;
+      const url = document.getElementById('urlInput').value.trim();
+      if (!url) return;
 
-    const btn = document.getElementById('dlBtn');
-    btn.disabled = true;
-    document.getElementById('progressWrap').classList.add('visible');
-    setBar(true, '取得中...');
-    setChip('取得中...', 'loading');
+      const btn = document.getElementById('dlBtn');
+      btn.disabled = true;
+      document.getElementById('progressWrap').classList.add('visible');
+      setBar(true, '取得中...');
+      setChip('取得中...', 'loading');
 
-    try {
-      const res = await fetch(`/api/videos?url=${encodeURIComponent(url)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      try {
+          const res  = await fetch(`/api/videos?url=${encodeURIComponent(url)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const m3u8 = (await res.text()).trim();
 
-      setBar(false, '完了');
-      setChip('再生中', 'ok');
+          setBar(false, '完了');
+          setChip('再生中', 'ok');
+          loadPlayer(m3u8);  // CDN直アクセス
 
-      // video_urlとしてPHのURLを渡す → proxyが毎回新鮮なm3u8を取得
-      loadPlayer(`/proxy?video_url=${encodeURIComponent(url)}`);
-
-    } catch (e) {
-      setBar(false, 'エラー');
-      setChip(e.message, 'error');
-    } finally {
-      btn.disabled = false;
-    }
+      } catch (e) {
+          setBar(false, 'エラー');
+          setChip(e.message, 'error');
+      } finally {
+          btn.disabled = false;
+      }
   }
 
   function loadPlayer(m3u8Url) {
