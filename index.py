@@ -27,34 +27,7 @@ def start():
         return m3u8_url
     except Exception as e:
         return str(e), 500
-@app.route("/proxy")
-def proxy():
-    video_url = request.args.get("video_url", "")
-    if not video_url:
-        return "missing video_url", 400
-
-    m3u8_url = loop.run_until_complete(get_m3u8(video_url))
-    return rewrite_m3u8(m3u8_url)
-
-@app.route("/ts")
-def ts():
-    url = request.args.get("url", "")
-    if not url:
-        return "missing url", 400
-
-    headers = {
-        "Referer":    "https://www.pornhub.com/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-        "Origin":     "https://www.pornhub.com",
-    }
-
-    r = requests.get(url, headers=headers, stream=True, timeout=10)
-    content_type = r.headers.get("Content-Type", "")
-    if "mpegurl" in content_type or url.split("?")[0].endswith(".m3u8"):
-        return rewrite_m3u8(url)
-
-    return Response(r.iter_content(chunk_size=1024*64), content_type="video/MP2T")
-
+    
 def rewrite_m3u8(m3u8_url):
     headers = {
         "Referer":    "https://www.pornhub.com/",
