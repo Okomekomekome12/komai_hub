@@ -23,7 +23,12 @@ def fetch_m3u8(url):
     base = url.rsplit("/", 1)[0]
     lines = []
     for line in r.text.splitlines():
-        if line and not line.startswith("#"):
+        if line.startswith("#EXT-X-MAP:URI="):
+            uri = line.split('URI="')[1].rstrip('"')
+            if not uri.startswith("http"):
+                uri = f"{base}/{uri}"
+            line = f'#EXT-X-MAP:URI="/ts?url={requests.utils.quote(uri, safe="")}"'
+        elif line and not line.startswith("#"):
             if not line.startswith("http"):
                 line = f"{base}/{line}"
             line = f"/ts?url={requests.utils.quote(line, safe='')}"
@@ -52,11 +57,27 @@ def m3u8():
 @app.route("/ts")
 def ts():
     url = request.args.get("url", "")
+    if not url:
+        return "missing url", 400
+
     if url.split("?")[0].endswith(".m3u8"):
         return fetch_m3u8(url)
-    r = requests.get(url, headers=HEADERS, stream=True, timeout=30)
-    return Response(r.iter_content(chunk_size=1024*128), content_type="video/MP2T")
 
+    try:
+        r = requests.get(url, headers=HEADERS, stream=True, timeout=30)
+        print(f"{r.status_code} {url[:80]}")
+
+        if r.status_code != 200:
+            return f"upstream {r.status_code}", r.status_code
+
+        path = url.split("?")[0]
+        content_type = "video/mp4" if (path.endswith(".m4s") or path.endswith(".mp4")) else "video/MP2T"
+
+        return Response(r.iter_content(chunk_size=1024*128), content_type=content_type)
+
+    except Exception as e:
+        print(e)
+        return str(e), 500
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
